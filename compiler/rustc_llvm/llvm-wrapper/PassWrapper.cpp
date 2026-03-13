@@ -425,7 +425,7 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
   std::string Error;
   Triple Trip(Triple::normalize(TripleStr));
   const llvm::Target *TheTarget =
-      TargetRegistry::lookupTarget(Trip.getTriple(), Error);
+      TargetRegistry::lookupTarget(Trip, Error);
   if (TheTarget == nullptr) {
     LLVMRustSetLastError(Error.c_str());
     return nullptr;
@@ -450,14 +450,12 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
       Options.ObjectFilenameForDebug = OutputObjFile;
   }
   if (!strcmp("zlib", DebugInfoCompression) && llvm::compression::zlib::isAvailable()) {
-    Options.CompressDebugSections = DebugCompressionType::Zlib;
+    Options.MCOptions.CompressDebugSections = DebugCompressionType::Zlib;
   } else if (!strcmp("zstd", DebugInfoCompression) && llvm::compression::zstd::isAvailable()) {
-    Options.CompressDebugSections = DebugCompressionType::Zstd;
+    Options.MCOptions.CompressDebugSections = DebugCompressionType::Zstd;
   } else if (!strcmp("none", DebugInfoCompression)) {
-    Options.CompressDebugSections = DebugCompressionType::None;
+    Options.MCOptions.CompressDebugSections = DebugCompressionType::None;
   }
-
-  Options.RelaxELFRelocations = RelaxELFRelocations;
   Options.UseInitArray = UseInitArray;
 
 #if LLVM_VERSION_LT(17, 0)
@@ -494,9 +492,7 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
     assert(ArgsCstrBuff[ArgsCstrBuffLen - 1] == '\0');
 
     const size_t arg0_len = std::strlen(ArgsCstrBuff);
-    char* arg0 = new char[arg0_len + 1];
-    memcpy(arg0, ArgsCstrBuff, arg0_len);
-    arg0[arg0_len] = '\0';
+    std::string arg0(ArgsCstrBuff, arg0_len);
     buffer_offset += arg0_len + 1;
 
     const int num_cmd_arg_strings =
@@ -513,21 +509,22 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
 
     assert(buffer_offset == ArgsCstrBuffLen);
 
-    Options.MCOptions.Argv0 = arg0;
-    Options.MCOptions.CommandLineArgs =
-      llvm::ArrayRef<std::string>(cmd_arg_strings, num_cmd_arg_strings);
+    Options.MCOptions.Argv0 = std::move(arg0);
+    std::string joined;
+    for (int i = 0; i < num_cmd_arg_strings; ++i) {
+      if (i > 0) joined += ' ';
+      joined += cmd_arg_strings[i];
+    }
+    delete[] cmd_arg_strings;
+    Options.MCOptions.CommandlineArgs = std::move(joined);
   }
 
   TargetMachine *TM = TheTarget->createTargetMachine(
-      Trip.getTriple(), CPU, Feature, Options, RM, CM, OptLevel);
+      Trip, CPU, Feature, Options, RM, CM, OptLevel);
   return wrap(TM);
 }
 
 extern "C" void LLVMRustDisposeTargetMachine(LLVMTargetMachineRef TM) {
-
-  MCTargetOptions& MCOptions = unwrap(TM)->Options.MCOptions;
-  delete[] MCOptions.Argv0;
-  delete[] MCOptions.CommandLineArgs.data();
 
   delete unwrap(TM);
 }
