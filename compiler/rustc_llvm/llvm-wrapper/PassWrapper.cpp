@@ -1183,15 +1183,9 @@ struct LLVMRustThinLTOData {
 
   // Not 100% sure what these are, but they impact what's internalized and
   // what's inlined across modules, I believe.
-#if LLVM_VERSION_GE(18, 0)
-  DenseMap<StringRef, FunctionImporter::ImportMapTy> ImportLists;
+  FunctionImporter::ImportListsTy ImportLists;
   DenseMap<StringRef, FunctionImporter::ExportSetTy> ExportLists;
   DenseMap<StringRef, GVSummaryMapTy> ModuleToDefinedGVSummaries;
-#else
-  StringMap<FunctionImporter::ImportMapTy> ImportLists;
-  StringMap<FunctionImporter::ExportSetTy> ExportLists;
-  StringMap<GVSummaryMapTy> ModuleToDefinedGVSummaries;
-#endif
   StringMap<std::map<GlobalValue::GUID, GlobalValue::LinkageTypes>> ResolvedODR;
 
   LLVMRustThinLTOData() : Index(/* HaveGVs = */ false) {}
@@ -1207,7 +1201,7 @@ struct LLVMRustThinLTOModule {
 // This is copied from `lib/LTO/ThinLTOCodeGenerator.cpp`, not sure what it
 // does.
 static const GlobalValueSummary *
-getFirstDefinitionForLinker(const GlobalValueSummaryList &GVSummaryList) {
+getFirstDefinitionForLinker(ArrayRef<std::unique_ptr<GlobalValueSummary>> GVSummaryList) {
   auto StrongDefForLinker = llvm::find_if(
       GVSummaryList, [](const std::unique_ptr<GlobalValueSummary> &Summary) {
         auto Linkage = Summary->linkage();
@@ -1261,7 +1255,7 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
   // Convert the preserved symbols set from string to GUID, this is then needed
   // for internalization.
   for (int i = 0; i < num_symbols; i++) {
-    auto GUID = GlobalValue::getGUID(preserved_symbols[i]);
+    auto GUID = GlobalValue::getGUIDAssumingExternalLinkage(preserved_symbols[i]);
     Ret->GUIDPreservedSymbols.insert(GUID);
   }
 
@@ -1284,8 +1278,8 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
   // being lifted from `lib/LTO/LTO.cpp` as well
   DenseMap<GlobalValue::GUID, const GlobalValueSummary *> PrevailingCopy;
   for (auto &I : Ret->Index) {
-    if (I.second.SummaryList.size() > 1)
-      PrevailingCopy[I.first] = getFirstDefinitionForLinker(I.second.SummaryList);
+    if (I.second.getSummaryList().size() > 1)
+      PrevailingCopy[I.first] = getFirstDefinitionForLinker(I.second.getSummaryList());
   }
   auto isPrevailing = [&](GlobalValue::GUID GUID, const GlobalValueSummary *S) {
     const auto &Prevailing = PrevailingCopy.find(GUID);
@@ -1323,7 +1317,7 @@ LLVMRustCreateThinLTOData(LLVMRustThinLTOModule *modules,
   // linkage will stay as external, and internal will stay as internal.
   std::set<GlobalValue::GUID> ExportedGUIDs;
   for (auto &List : Ret->Index) {
-    for (auto &GVS: List.second.SummaryList) {
+    for (const auto &GVS: List.second.getSummaryList()) {
       if (GlobalValue::isLocalLinkage(GVS->linkage()))
         continue;
       auto GUID = GVS->getOriginalName();
@@ -1373,12 +1367,7 @@ LLVMRustPrepareThinLTORename(const LLVMRustThinLTOData *Data, LLVMModuleRef M,
   TargetMachine &Target = *unwrap(TM);
 
   bool ClearDSOLocal = clearDSOLocalOnDeclarations(Mod, Target);
-  bool error = renameModuleForThinLTO(Mod, Data->Index, ClearDSOLocal);
-
-  if (error) {
-    LLVMRustSetLastError("renameModuleForThinLTO failed");
-    return false;
-  }
+  renameModuleForThinLTO(Mod, Data->Index, ClearDSOLocal);
   return true;
 }
 
@@ -1569,24 +1558,21 @@ extern "C" const char *LLVMRustGetSliceFromObjectDataByName(const char *data,
 // used during the normal linker-plugin incremental thin-LTO process.
 extern "C" void
 LLVMRustComputeLTOCacheKey(RustStringRef KeyOut, const char *ModId, LLVMRustThinLTOData *Data) {
-  SmallString<40> Key;
   llvm::lto::Config conf;
   const auto &ImportList = Data->ImportLists.lookup(ModId);
   const auto &ExportList = Data->ExportLists.lookup(ModId);
   const auto &ResolvedODR = Data->ResolvedODR.lookup(ModId);
   const auto &DefinedGlobals = Data->ModuleToDefinedGVSummaries.lookup(ModId);
-  std::set<GlobalValue::GUID> CfiFunctionDefs;
-  std::set<GlobalValue::GUID> CfiFunctionDecls;
+  DenseSet<GlobalValue::GUID> CfiFunctionDefs;
+  DenseSet<GlobalValue::GUID> CfiFunctionDecls;
 
   // Based on the 'InProcessThinBackend' constructor in LLVM
-  for (auto &Name : Data->Index.cfiFunctionDefs())
-    CfiFunctionDefs.insert(
-        GlobalValue::getGUID(GlobalValue::dropLLVMManglingEscape(Name)));
-  for (auto &Name : Data->Index.cfiFunctionDecls())
-    CfiFunctionDecls.insert(
-        GlobalValue::getGUID(GlobalValue::dropLLVMManglingEscape(Name)));
+  for (auto GUID : Data->Index.cfiFunctionDefs().guids())
+    CfiFunctionDefs.insert(GUID);
+  for (auto GUID : Data->Index.cfiFunctionDecls().guids())
+    CfiFunctionDecls.insert(GUID);
 
-  llvm::computeLTOCacheKey(Key, conf, Data->Index, ModId,
+  std::string Key = llvm::computeLTOCacheKey(conf, Data->Index, ModId,
       ImportList, ExportList, ResolvedODR, DefinedGlobals, CfiFunctionDefs, CfiFunctionDecls
   );
 
