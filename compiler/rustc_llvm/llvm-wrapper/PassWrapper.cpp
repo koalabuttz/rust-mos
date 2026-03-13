@@ -20,7 +20,7 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/IRObjectFile.h"
 #include "llvm/Passes/PassBuilder.h"
-#include "llvm/Passes/PassPlugin.h"
+#include "llvm/Plugins/PassPlugin.h"
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CBindingWrapping.h"
 #include "llvm/Support/FileSystem.h"
@@ -40,7 +40,7 @@
 #if LLVM_VERSION_GE(18, 0)
 #include "llvm/TargetParser/Host.h"
 #endif
-#include "llvm/Transforms/Instrumentation.h"
+#include "llvm/Transforms/Utils/Instrumentation.h"
 #include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
 #include "llvm/Support/TimeProfiler.h"
 #if LLVM_VERSION_GE(19, 0)
