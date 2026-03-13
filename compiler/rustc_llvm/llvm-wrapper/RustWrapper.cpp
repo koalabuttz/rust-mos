@@ -104,7 +104,7 @@ extern "C" LLVMContextRef LLVMRustContextCreate(bool shouldDiscardNames) {
 
 extern "C" void LLVMRustSetNormalizedTarget(LLVMModuleRef M,
                                             const char *Triple) {
-  unwrap(M)->setTargetTriple(Triple::normalize(Triple));
+  unwrap(M)->setTargetTriple(llvm::Triple(llvm::Triple::normalize(Triple)));
 }
 
 extern "C" const char *LLVMRustPrintPassTimings(size_t *Len) {
@@ -213,7 +213,7 @@ static Attribute::AttrKind fromRust(LLVMRustAttribute Kind) {
   case NoAlias:
     return Attribute::NoAlias;
   case NoCapture:
-    return Attribute::NoCapture;
+    return Attribute::Captures;
   case NoCfCheck:
     return Attribute::NoCfCheck;
   case NoInline:
@@ -306,6 +306,9 @@ extern "C" void LLVMRustAddCallSiteAttributes(LLVMValueRef Instr, unsigned Index
 
 extern "C" LLVMAttributeRef LLVMRustCreateAttrNoValue(LLVMContextRef C,
                                                       LLVMRustAttribute RustAttr) {
+  if (RustAttr == NoCapture) {
+    return wrap(Attribute::getWithCaptureInfo(*unwrap(C), CaptureInfo::none()));
+  }
   return wrap(Attribute::get(*unwrap(C), fromRust(RustAttr)));
 }
 
@@ -849,7 +852,7 @@ extern "C" LLVMMetadataRef
 LLVMRustDIBuilderCreateSubroutineType(LLVMRustDIBuilderRef Builder,
                                       LLVMMetadataRef ParameterTypes) {
   return wrap(Builder->createSubroutineType(
-      DITypeRefArray(unwrap<MDTuple>(ParameterTypes))));
+      DITypeArray(unwrap<MDTuple>(ParameterTypes))));
 }
 
 extern "C" LLVMMetadataRef LLVMRustDIBuilderCreateFunction(
@@ -1101,11 +1104,15 @@ extern "C" LLVMValueRef LLVMRustDIBuilderInsertDeclareAtEnd(
     LLVMRustDIBuilderRef Builder, LLVMValueRef V, LLVMMetadataRef VarInfo,
     uint64_t *AddrOps, unsigned AddrOpsCount, LLVMMetadataRef DL,
     LLVMBasicBlockRef InsertAtEnd) {
-  return wrap(Builder->insertDeclare(
+  Builder->insertDeclare(
       unwrap(V), unwrap<DILocalVariable>(VarInfo),
       Builder->createExpression(llvm::ArrayRef<uint64_t>(AddrOps, AddrOpsCount)),
       DebugLoc(cast<MDNode>(unwrap(DL))),
-      unwrap(InsertAtEnd)));
+      unwrap(InsertAtEnd));
+  // insertDeclare returns a DbgInstPtr (DbgRecord*) in modern LLVM,
+  // which cannot be wrapped as an LLVMValueRef. The return value is
+  // unused by the Rust caller.
+  return nullptr;
 }
 
 extern "C" LLVMMetadataRef LLVMRustDIBuilderCreateEnumerator(
@@ -1393,8 +1400,6 @@ extern "C" LLVMTypeKind LLVMRustGetTypeKind(LLVMTypeRef Ty) {
     return LLVMPointerTypeKind;
   case Type::FixedVectorTyID:
     return LLVMVectorTypeKind;
-  case Type::X86_MMXTyID:
-    return LLVMX86_MMXTypeKind;
   case Type::TokenTyID:
     return LLVMTokenTypeKind;
   case Type::ScalableVectorTyID:
@@ -1493,7 +1498,7 @@ extern "C" LLVMValueRef LLVMRustBuildCall(LLVMBuilderRef B, LLVMTypeRef Ty, LLVM
 }
 
 extern "C" LLVMValueRef LLVMRustGetInstrProfIncrementIntrinsic(LLVMModuleRef M) {
-  return wrap(llvm::Intrinsic::getDeclaration(unwrap(M),
+  return wrap(llvm::Intrinsic::getOrInsertDeclaration(unwrap(M),
               (llvm::Intrinsic::ID)llvm::Intrinsic::instrprof_increment));
 }
 
@@ -1936,7 +1941,7 @@ extern "C" void LLVMRustContextConfigureDiagnosticHandler(
         }
       }
       if (DiagnosticHandlerCallback) {
-        DiagnosticHandlerCallback(DI, DiagnosticHandlerContext);
+        DiagnosticHandlerCallback(&DI, DiagnosticHandlerContext);
         return true;
       }
       return false;
@@ -2017,7 +2022,6 @@ extern "C" void LLVMRustContextConfigureDiagnosticHandler(
 
     auto RemarkSerializer = remarks::createRemarkSerializer(
       llvm::remarks::Format::YAML,
-      remarks::SerializerMode::Separate,
       RemarkFile->os()
     );
     if (Error E = RemarkSerializer.takeError())
