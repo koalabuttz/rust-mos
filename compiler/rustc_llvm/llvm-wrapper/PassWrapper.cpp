@@ -738,54 +738,27 @@ LLVMRustOptimize(
   }
 
   std::optional<PGOOptions> PGOOpt;
-#if LLVM_VERSION_GE(17, 0)
-  auto FS = vfs::getRealFileSystem();
-#endif
   if (PGOGenPath) {
     assert(!PGOUsePath && !PGOSampleUsePath);
-    PGOOpt = PGOOptions(PGOGenPath, "", "",
-#if LLVM_VERSION_GE(17, 0)
-                        "",
-                        FS,
-#endif
+    PGOOpt = PGOOptions(PGOGenPath, "", "", "",
                         PGOOptions::IRInstr, PGOOptions::NoCSAction,
-#if LLVM_VERSION_GE(19, 0)
                         PGOOptions::ColdFuncOpt::Default,
-#endif
                         DebugInfoForProfiling);
   } else if (PGOUsePath) {
     assert(!PGOSampleUsePath);
-    PGOOpt = PGOOptions(PGOUsePath, "", "",
-#if LLVM_VERSION_GE(17, 0)
-                        "",
-                        FS,
-#endif
+    PGOOpt = PGOOptions(PGOUsePath, "", "", "",
                         PGOOptions::IRUse, PGOOptions::NoCSAction,
-#if LLVM_VERSION_GE(19, 0)
                         PGOOptions::ColdFuncOpt::Default,
-#endif
                         DebugInfoForProfiling);
   } else if (PGOSampleUsePath) {
-    PGOOpt = PGOOptions(PGOSampleUsePath, "", "",
-#if LLVM_VERSION_GE(17, 0)
-                        "",
-                        FS,
-#endif
+    PGOOpt = PGOOptions(PGOSampleUsePath, "", "", "",
                         PGOOptions::SampleUse, PGOOptions::NoCSAction,
-#if LLVM_VERSION_GE(19, 0)
                         PGOOptions::ColdFuncOpt::Default,
-#endif
                         DebugInfoForProfiling);
   } else if (DebugInfoForProfiling) {
-    PGOOpt = PGOOptions("", "", "",
-#if LLVM_VERSION_GE(17, 0)
-                        "",
-                        FS,
-#endif
+    PGOOpt = PGOOptions("", "", "", "",
                         PGOOptions::NoAction, PGOOptions::NoCSAction,
-#if LLVM_VERSION_GE(19, 0)
                         PGOOptions::ColdFuncOpt::Default,
-#endif
                         DebugInfoForProfiling);
   }
 
@@ -829,7 +802,8 @@ LLVMRustOptimize(
   // PassBuilder does not create a pipeline.
   std::vector<std::function<void(ModulePassManager &, OptimizationLevel)>>
       PipelineStartEPCallbacks;
-  std::vector<std::function<void(ModulePassManager &, OptimizationLevel)>>
+  std::vector<std::function<void(ModulePassManager &, OptimizationLevel,
+                                   ThinOrFullLTOPhase)>>
       OptimizerLastEPCallbacks;
 
   if (!IsLinkerPluginLTO
@@ -839,7 +813,7 @@ LLVMRustOptimize(
       [](ModulePassManager &MPM, OptimizationLevel Level) {
         MPM.addPass(LowerTypeTestsPass(/*ExportSummary=*/nullptr,
                                        /*ImportSummary=*/nullptr,
-                                       /*DropTypeTests=*/false));
+                                       lowertypetests::DropTestKind::None));
       }
     );
   }
@@ -887,7 +861,8 @@ LLVMRustOptimize(
           /*CompileKernel=*/false,
           /*EagerChecks=*/true);
       OptimizerLastEPCallbacks.push_back(
-        [Options](ModulePassManager &MPM, OptimizationLevel Level) {
+        [Options](ModulePassManager &MPM, OptimizationLevel Level,
+                  ThinOrFullLTOPhase) {
           MPM.addPass(MemorySanitizerPass(Options));
         }
       );
@@ -895,7 +870,8 @@ LLVMRustOptimize(
 
     if (SanitizerOptions->SanitizeThread) {
       OptimizerLastEPCallbacks.push_back(
-        [](ModulePassManager &MPM, OptimizationLevel Level) {
+        [](ModulePassManager &MPM, OptimizationLevel Level,
+           ThinOrFullLTOPhase) {
           MPM.addPass(ModuleThreadSanitizerPass());
           MPM.addPass(createModuleToFunctionPassAdaptor(ThreadSanitizerPass()));
         }
@@ -904,7 +880,8 @@ LLVMRustOptimize(
 
     if (SanitizerOptions->SanitizeAddress || SanitizerOptions->SanitizeKernelAddress) {
       OptimizerLastEPCallbacks.push_back(
-        [SanitizerOptions](ModulePassManager &MPM, OptimizationLevel Level) {
+        [SanitizerOptions](ModulePassManager &MPM, OptimizationLevel Level,
+                           ThinOrFullLTOPhase) {
           auto CompileKernel = SanitizerOptions->SanitizeKernelAddress;
           AddressSanitizerOptions opts = AddressSanitizerOptions{
             CompileKernel,
@@ -919,7 +896,8 @@ LLVMRustOptimize(
     }
     if (SanitizerOptions->SanitizeHWAddress) {
       OptimizerLastEPCallbacks.push_back(
-        [SanitizerOptions](ModulePassManager &MPM, OptimizationLevel Level) {
+        [SanitizerOptions](ModulePassManager &MPM, OptimizationLevel Level,
+                           ThinOrFullLTOPhase) {
           HWAddressSanitizerOptions opts(
               /*CompileKernel=*/false, SanitizerOptions->SanitizeHWAddressRecover,
               /*DisableOptimization=*/false);
@@ -942,7 +920,7 @@ LLVMRustOptimize(
         PB.registerOptimizerLastEPCallback(C);
 
       // Pass false as we manually schedule ThinLTOBufferPasses below.
-      MPM = PB.buildO0DefaultPipeline(OptLevel, /* PreLinkLTO */ false);
+      MPM = PB.buildO0DefaultPipeline(OptLevel, ThinOrFullLTOPhase::None);
     } else {
       for (const auto &C : PipelineStartEPCallbacks)
         PB.registerPipelineStartEPCallback(C);
@@ -951,7 +929,7 @@ LLVMRustOptimize(
 
       switch (OptStage) {
       case LLVMRustOptStage::PreLinkNoLTO:
-        MPM = PB.buildPerModuleDefaultPipeline(OptLevel, DebugPassManager);
+        MPM = PB.buildPerModuleDefaultPipeline(OptLevel);
         break;
       case LLVMRustOptStage::PreLinkThinLTO:
         MPM = PB.buildThinLTOPreLinkDefaultPipeline(OptLevel);
@@ -977,7 +955,7 @@ LLVMRustOptimize(
     for (const auto &C : PipelineStartEPCallbacks)
       C(MPM, OptLevel);
     for (const auto &C : OptimizerLastEPCallbacks)
-      C(MPM, OptLevel);
+      C(MPM, OptLevel, ThinOrFullLTOPhase::None);
   }
 
   if (ExtraPassesLen) {
