@@ -1,0 +1,25 @@
+[workspace]
+resolver = "1"
+members = [
+  "std",
+  "sysroot",
+  "core",
+  "alloc",
+  "test",
+  "panic_abort",
+  "panic_unwind",
+  "proc_macro",
+  "profiler_builtins",
+  "unwind",
+  "rustc-std-workspace-alloc",
+  "rustc-std-workspace-core",
+  "rustc-std-workspace-std",
+]
+
+# These are path dependencies used by std that live outside the library dir.
+# Patch them so cargo can resolve them when building from the library workspace.
+[patch.crates-io]
+rustc-std-workspace-core = { path = "rustc-std-workspace-core" }
+rustc-std-workspace-alloc = { path = "rustc-std-workspace-alloc" }
+rustc-std-workspace-std = { path = "rustc-std-workspace-std" }
+compiler_builtins = { git = "https://github.com/mrk-its/compiler-builtins", branch = "mos-0.1.108" }
