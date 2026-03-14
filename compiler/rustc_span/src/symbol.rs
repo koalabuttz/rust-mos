@@ -1513,6 +1513,7 @@ symbols! {
         move_ref_pattern,
         move_size_limit,
         movrs_target_feature,
+        mos,
         msp430,
         mul,
         mul_assign,

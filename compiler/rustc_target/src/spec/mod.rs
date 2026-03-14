@@ -1432,6 +1432,7 @@ macro_rules! supported_targets {
 }
 
 supported_targets! {
+    ("mos-unknown-none", mos_unknown_none),
     ("x86_64-unknown-linux-gnu", x86_64_unknown_linux_gnu),
     ("x86_64-unknown-linux-gnux32", x86_64_unknown_linux_gnux32),
     ("i686-unknown-linux-gnu", i686_unknown_linux_gnu),
@@ -1869,6 +1870,7 @@ crate::target_spec_enum! {
         Mips32r6 = "mips32r6",
         Mips64 = "mips64",
         Mips64r6 = "mips64r6",
+        Mos = "mos",
         Msp430 = "msp430",
         Nvptx64 = "nvptx64",
         PowerPC = "powerpc",
@@ -1906,6 +1908,7 @@ impl Arch {
             Self::Mips32r6 => sym::mips32r6,
             Self::Mips64 => sym::mips64,
             Self::Mips64r6 => sym::mips64r6,
+            Self::Mos => sym::mos,
             Self::Msp430 => sym::msp430,
             Self::Nvptx64 => sym::nvptx64,
             Self::PowerPC => sym::powerpc,

@@ -34,6 +34,7 @@ mod x86_64;
 mod x86_win32;
 mod x86_win64;
 mod xtensa;
+mod mos;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]
 pub enum PassMode {
@@ -681,6 +682,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             Arch::Avr => avr::compute_abi_info(cx, self),
             Arch::LoongArch32 | Arch::LoongArch64 => loongarch::compute_abi_info(cx, self),
             Arch::M68k => m68k::compute_abi_info(cx, self),
+            Arch::Mos => mos::compute_abi_info(cx, self),
             Arch::CSky => csky::compute_abi_info(cx, self),
             Arch::Mips | Arch::Mips32r6 => mips::compute_abi_info(cx, self),
             Arch::Mips64 | Arch::Mips64r6 => mips64::compute_abi_info(cx, self),
