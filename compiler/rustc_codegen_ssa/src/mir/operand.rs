@@ -513,6 +513,28 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
                 //     untagged_variant
                 // }
                 // However, we will likely be able to emit simpler code.
+                // Use the narrower of tag_llty and cast_to for discriminant
+                // arithmetic, provided all discriminant values fit. When the tag
+                // is narrower (common: i8 tag, i16/i64 isize) and the variant
+                // count is small enough, this avoids widening that creates
+                // unnecessary multi-byte operations. The final intcast produces
+                // `switch(zext(X))` that LLVM's InstCombine can narrow back to
+                // the tag type. When the tag is wider (e.g., #[repr(u128)] with
+                // i64 isize), we truncate early as before.
+                let tag_width = bx.cx().int_width(tag_llty);
+                let cast_to_width = bx.cx().int_width(cast_to);
+                let max_discr = std::cmp::max(
+                    niche_variants.end().as_u32() as u128,
+                    untagged_variant.as_u32() as u128,
+                );
+                let arith_ty = if tag_width <= cast_to_width
+                    && max_discr < (1u128 << tag_width)
+                {
+                    tag_llty
+                } else {
+                    cast_to
+                };
+
                 let (is_niche, tagged_discr, delta) = if relative_max == 0 {
                     // Best case scenario: only one tagged variant. This will
                     // likely become just a comparison and a jump.
@@ -525,7 +547,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
                     // }
                     let is_niche = bx.icmp(IntPredicate::IntEQ, tag, niche_start_const);
                     let tagged_discr =
-                        bx.cx().const_uint(cast_to, niche_variants.start().as_u32() as u64);
+                        bx.cx().const_uint(arith_ty, niche_variants.start().as_u32() as u64);
                     (is_niche, tagged_discr, 0)
                 } else {
                     // Thanks to parameter attributes and load metadata, LLVM already knows
@@ -610,7 +632,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
                     let niche_end = tag_size.truncate(niche_end);
 
                     let relative_discr = bx.sub(tag, niche_start_const);
-                    let cast_tag = bx.intcast(relative_discr, cast_to, false);
+                    let relative_discr = bx.intcast(relative_discr, arith_ty, false);
                     let is_niche = if tag_range.no_unsigned_wraparound(tag_size) == Ok(true) {
                         if niche_start == tag_range.start {
                             let niche_end_const = bx.cx().const_uint_big(tag_llty, niche_end);
@@ -631,21 +653,21 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
                         bx.icmp(
                             IntPredicate::IntULE,
                             relative_discr,
-                            bx.cx().const_uint(tag_llty, relative_max as u64),
+                            bx.cx().const_uint(arith_ty, relative_max as u64),
                         )
                     };
 
-                    (is_niche, cast_tag, niche_variants.start().as_u32() as u128)
+                    (is_niche, relative_discr, niche_variants.start().as_u32() as u128)
                 };
 
                 let tagged_discr = if delta == 0 {
                     tagged_discr
                 } else {
-                    bx.add(tagged_discr, bx.cx().const_uint_big(cast_to, delta))
+                    bx.add(tagged_discr, bx.cx().const_uint_big(arith_ty, delta))
                 };
 
                 let untagged_variant_const =
-                    bx.cx().const_uint(cast_to, u64::from(untagged_variant.as_u32()));
+                    bx.cx().const_uint(arith_ty, u64::from(untagged_variant.as_u32()));
 
                 let discr = bx.select(is_niche, tagged_discr, untagged_variant_const);
 
@@ -654,7 +676,10 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
                 // have either a `range` parameter attribute or `!range` metadata,
                 // or come from a `transmute` that already `assume`d it.
 
-                discr
+                // Widen (or nop) to the expected discriminant type at the end.
+                // When arith_ty is narrower than cast_to (the common case), this
+                // produces `switch(zext(X))` which LLVM InstCombine narrows.
+                bx.intcast(discr, cast_to, false)
             }
         }
     }
