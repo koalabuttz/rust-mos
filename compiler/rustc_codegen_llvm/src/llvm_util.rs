@@ -392,6 +392,8 @@ fn update_target_reliable_float_cfg(sess: &Session, cfg: &mut TargetConfig) {
         (Arch::PowerPC | Arch::PowerPC64, _) if major < 22 => false, // (fixed in llvm22)
         (Arch::Sparc | Arch::Sparc64, _) if major < 22 => false, // (fixed in llvm22)
         (Arch::Wasm32 | Arch::Wasm64, _) if major < 22 => false, // (fixed in llvm22)
+        // MOS 6502 has no FPU; LLVM-MOS cannot legalize f16 constants.
+        (Arch::Mos, _) => false,
         // `f16` support only requires that symbols converting to and from `f32` are available. We
         // provide these in `compiler-builtins`, so `f16` should be available on all platforms that
         // do not have other ABI issues or LLVM crashes.
@@ -418,6 +420,8 @@ fn update_target_reliable_float_cfg(sess: &Session, cfg: &mut TargetConfig) {
         (Arch::X86, _) if major < 21 => false,
         // MinGW ABI bugs <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115054>
         (Arch::X86_64, Os::Windows) if *target_env == Env::Gnu && *target_abi != Abi::Llvm => false,
+        // MOS 6502 has no FPU; LLVM-MOS cannot legalize f128.
+        (Arch::Mos, _) => false,
         // There are no known problems on other platforms, so the only requirement is that symbols
         // are available. `compiler-builtins` provides all symbols required for core `f128`
         // support, so this should work for everything else.
