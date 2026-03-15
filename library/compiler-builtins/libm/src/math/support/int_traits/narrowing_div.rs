@@ -75,7 +75,10 @@ macro_rules! impl_narrowing_div_recurse {
 impl_narrowing_div_primitive!(u16);
 impl_narrowing_div_primitive!(u32);
 impl_narrowing_div_primitive!(u64);
+// MOS 6502: LLVM-MOS cannot legalize u128 division/remainder (G_UREM s128).
+#[cfg(not(target_arch = "mos"))]
 impl_narrowing_div_primitive!(u128);
+#[cfg(not(target_arch = "mos"))]
 impl_narrowing_div_recurse!(u256);
 
 /// Implement `u3N / u2N`-division on top of `u2N / uN`-division.

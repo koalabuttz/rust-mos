@@ -41,13 +41,25 @@ extern crate core;
 #[macro_use]
 mod macros;
 
+// MOS 6502: gate out float and math modules — LLVM-MOS cannot legalize
+// most FP operations. Provide the `support` module directly so `int`
+// still compiles (it needs CastFrom, CastInto, Int, MinInt from support).
+#[cfg(not(target_arch = "mos"))]
 pub mod float;
 pub mod int;
+#[cfg(not(target_arch = "mos"))]
 pub mod math;
 pub mod mem;
 
-// `libm` expects its `support` module to be available in the crate root.
+#[cfg(not(target_arch = "mos"))]
 use math::libm_math::support;
+
+#[cfg(target_arch = "mos")]
+#[allow(dead_code)]
+#[allow(unused_imports)]
+#[allow(clippy::all)]
+#[path = "../../libm/src/math/support/mod.rs"]
+mod support;
 
 #[cfg(target_arch = "arm")]
 pub mod arm;
