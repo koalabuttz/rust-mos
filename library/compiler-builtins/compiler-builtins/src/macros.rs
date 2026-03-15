@@ -402,6 +402,7 @@ macro_rules! intrinsics {
 
         $($rest:tt)*
     ) => (
+        #[inline(always)]
         $(#[$($attr)*])*
         pub unsafe extern $abi fn $name( $($argname: $ty),* ) $(-> $ret)? {
             $($body)*
