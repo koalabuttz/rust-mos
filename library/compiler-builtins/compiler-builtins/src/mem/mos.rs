@@ -21,10 +21,17 @@ pub unsafe fn copy_forward(dest: *mut u8, src: *const u8, n: usize) {
 
 #[inline(always)]
 pub unsafe fn copy_backward(dest: *mut u8, src: *const u8, n: usize) {
-    let mut i = n;
-    while i > 0 {
-        i -= 1;
-        *dest.wrapping_add(i) = *src.wrapping_add(i);
+    // Use pointer decrement (sub) instead of base+offset (wrapping_add).
+    // On 6502, wrapping_add(i) recomputes the 16-bit address each iteration.
+    // sub(1) lets the compiler use the non-wrapping assumption for tighter code.
+    // This matches the mrk-its/compiler-builtins mos-0.1.108 approach.
+    let mut s = src.add(n);
+    let mut d = dest.add(n);
+    let dest_start = dest;
+    while dest_start < d {
+        d = d.sub(1);
+        s = s.sub(1);
+        *d = *s;
     }
 }
 
