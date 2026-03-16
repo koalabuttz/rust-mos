@@ -166,7 +166,10 @@ RUN set -eux && \
     # rustfmt
     cp "${TOOLS}/rustfmt" /rust-mos-install/bin/rustfmt && \
     # rust-src: needed for -Zbuild-std cross-compilation to MOS targets
+    # stage1/lib/rustlib/src/rust/library may be a symlink back to the source tree;
+    # remove it and copy the real directory so it works in the final image
     RUST_SRC_DEST="/rust-mos-install/lib/rustlib/src/rust" && \
+    rm -rf "${RUST_SRC_DEST}/library" 2>/dev/null && \
     mkdir -p "${RUST_SRC_DEST}" && \
     cp -a /src/rust-mos/library "${RUST_SRC_DEST}/" && \
     cp /src/rust-mos/Cargo.lock "${RUST_SRC_DEST}/" && \
