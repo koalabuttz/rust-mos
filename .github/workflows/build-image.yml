@@ -2,6 +2,7 @@
 #
 # Produces multi-arch images (amd64 + arm64) and pushes to ghcr.io.
 # All compilation happens from source — fully reproducible.
+# Each architecture builds natively on its own runner (no QEMU emulation).
 #
 # Triggers:
 #   - Push to main branch (automatic)
@@ -29,14 +30,6 @@ on:
         description: 'rust-mos commit SHA (defaults to triggering commit)'
         required: false
         type: string
-      platforms:
-        description: 'Target platforms (comma-separated)'
-        required: false
-        default: 'linux/amd64'
-        type: choice
-        options:
-          - 'linux/amd64'
-          - 'linux/amd64,linux/arm64'
 
 env:
   REGISTRY: ghcr.io
@@ -51,9 +44,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Build each architecture natively on its own runner
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6h — LLVM builds are slow on 2-core runners
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest      # x86_64, 4 vCPU (public repo)
+          - arch: arm64
+            runner: ubuntu-24.04-arm   # aarch64, 4 vCPU (public repo)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360  # 6h — LLVM builds are slow
     permissions:
       contents: read
       packages: write
@@ -94,10 +96,6 @@ jobs:
                       /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           df -h
 
-      - name: Set up QEMU
-        if: contains(inputs.platforms || 'linux/amd64', 'arm64')
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -108,30 +106,76 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push (per-arch)
         uses: docker/build-push-action@v6
         with:
           file: docker/Dockerfile.build
           context: docker
-          platforms: ${{ inputs.platforms || 'linux/amd64' }}
+          platforms: linux/${{ matrix.arch }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.llvm_short }}-${{ steps.sha.outputs.sdk_short }}-${{ steps.sha.outputs.rust_short }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.llvm_short }}-${{ steps.sha.outputs.sdk_short }}-${{ steps.sha.outputs.rust_short }}-${{ matrix.arch }}
           build-args: |
             LLVM_MOS_SHA=${{ steps.sha.outputs.llvm }}
             LLVM_MOS_SDK_SHA=${{ steps.sha.outputs.sdk }}
             RUST_MOS_SHA=${{ steps.sha.outputs.rust }}
           labels: |
             org.opencontainers.image.revision=${{ steps.sha.outputs.rust }}
-            org.opencontainers.image.description=LLVM-MOS ${{ steps.sha.outputs.llvm_short }} + SDK ${{ steps.sha.outputs.sdk_short }} + rust-mos ${{ steps.sha.outputs.rust_short }}
+            org.opencontainers.image.description=LLVM-MOS ${{ steps.sha.outputs.llvm_short }} + SDK ${{ steps.sha.outputs.sdk_short }} + rust-mos ${{ steps.sha.outputs.rust_short }} (${{ matrix.arch }})
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
 
-  test:
+  # Create multi-arch manifest from per-arch images
+  manifest:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+
+    steps:
+      - name: Resolve tag
+        id: sha
+        run: |
+          LLVM_SHA="${{ inputs.llvm_mos_sha || env.DEFAULT_LLVM_MOS_SHA }}"
+          SDK_SHA="${{ inputs.llvm_mos_sdk_sha || env.DEFAULT_LLVM_MOS_SDK_SHA }}"
+          RUST_SHA="${{ inputs.rust_mos_sha || github.sha }}"
+          TAG="$(echo ${LLVM_SHA} | cut -c1-9)-$(echo ${SDK_SHA} | cut -c1-7)-$(echo ${RUST_SHA} | cut -c1-9)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          TAG="${{ steps.sha.outputs.tag }}"
+          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+
+          docker buildx imagetools create \
+            -t "${IMAGE}:${TAG}" \
+            -t "${IMAGE}:latest" \
+            "${IMAGE}:${TAG}-amd64" \
+            "${IMAGE}:${TAG}-arm64"
+
+          echo "=== Multi-arch manifest created ==="
+          docker buildx imagetools inspect "${IMAGE}:${TAG}"
+
+  # Smoke test the published image
+  test:
+    needs: manifest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
       packages: read
@@ -145,9 +189,6 @@ jobs:
           RUST_SHA="${{ inputs.rust_mos_sha || github.sha }}"
           TAG="$(echo ${LLVM_SHA} | cut -c1-9)-$(echo ${SDK_SHA} | cut -c1-7)-$(echo ${RUST_SHA} | cut -c1-9)"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-        env:
-          DEFAULT_LLVM_MOS_SHA: '54c694f07199151b3394ea2af9f4790d51166852'
-          DEFAULT_LLVM_MOS_SDK_SHA: '45371581201110552a51b3b1de2aae1a0b0af89c'
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -159,7 +200,7 @@ jobs:
       - name: Smoke test — toolchain versions
         run: |
           IMAGE="${REGISTRY}/${IMAGE_NAME}:${{ steps.sha.outputs.tag }}"
-          echo "=== Testing ${IMAGE} ==="
+          echo "=== Testing ${IMAGE} on ${{ matrix.arch }} ==="
 
           echo "--- rustc version ---"
           docker run --rm "$IMAGE" rustc --version
@@ -169,9 +210,6 @@ jobs:
 
           echo "--- clang version ---"
           docker run --rm "$IMAGE" mos-clang --version
-
-          echo "--- llvm-config version ---"
-          docker run --rm "$IMAGE" llvm-config --version
 
           echo "--- MOS targets ---"
           docker run --rm "$IMAGE" ls /usr/local/rust-mos/targets/
@@ -183,7 +221,6 @@ jobs:
         run: |
           IMAGE="${REGISTRY}/${IMAGE_NAME}:${{ steps.sha.outputs.tag }}"
 
-          # Create a minimal Rust project that targets MOS
           mkdir -p /tmp/test-mos/src
           cat > /tmp/test-mos/Cargo.toml << 'EOF'
           [package]
@@ -207,4 +244,4 @@ jobs:
             "$IMAGE" \
             cargo build --target mos-c64-none -Zbuild-std=core --release
 
-          echo "=== MOS compilation succeeded ==="
+          echo "=== MOS compilation succeeded on ${{ matrix.arch }} ==="
