@@ -107,6 +107,22 @@ WORKDIR /src
 RUN curl -fsSL "https://github.com/koalabuttz/rust-mos/archive/${RUST_MOS_SHA}.tar.gz" | tar xz && \
     mv "rust-mos-${RUST_MOS_SHA}" rust-mos
 
+# Fetch required submodules (not included in GitHub tarballs)
+# Resolves each submodule's pinned SHA via the GitHub API, then downloads its tarball
+ARG RUST_MOS_REPO=koalabuttz/rust-mos
+RUN cd /src/rust-mos && \
+    for submod in \
+      "library/backtrace rust-lang/backtrace-rs" \
+      "src/tools/cargo rust-lang/cargo" \
+    ; do \
+      path="${submod%% *}" repo="${submod##* }"; \
+      sha=$(curl -fsSL "https://api.github.com/repos/${RUST_MOS_REPO}/contents/${path}?ref=${RUST_MOS_SHA}" | \
+        python3 -c "import json,sys; print(json.load(sys.stdin)['sha'])"); \
+      echo ">>> Fetching submodule ${path} at ${sha} from ${repo}"; \
+      mkdir -p "${path}" && \
+      curl -fsSL "https://github.com/${repo}/archive/${sha}.tar.gz" | tar xz --strip-components=1 -C "${path}"; \
+    done
+
 # Generate config.toml for the native host architecture
 RUN HOST_TRIPLE="$(uname -m)-unknown-linux-gnu" && \
     cat > /src/rust-mos/config.toml << TOML
