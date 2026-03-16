@@ -279,6 +279,9 @@ impl<'ll, 'tcx> AsmBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 InlineAsmArch::SpirV => {}
                 InlineAsmArch::Wasm32 | InlineAsmArch::Wasm64 => {}
                 InlineAsmArch::Bpf => {}
+                InlineAsmArch::Mos => {
+                    constraints.push("~{cc}".to_string());
+                }
                 InlineAsmArch::Msp430 => {
                     constraints.push("~{sr}".to_string());
                 }
@@ -700,6 +703,12 @@ fn reg_to_llvm(reg: InlineAsmRegOrRegClass, layout: Option<&TyAndLayout<'_>>) ->
             }
             Sparc(SparcInlineAsmRegClass::reg) => "r",
             Sparc(SparcInlineAsmRegClass::yreg) => unreachable!("clobber-only"),
+            Mos(MosInlineAsmRegClass::reg) => "r",
+            Mos(MosInlineAsmRegClass::reg_a) => "a",
+            Mos(MosInlineAsmRegClass::reg_x) => "x",
+            Mos(MosInlineAsmRegClass::reg_y) => "y",
+            Mos(MosInlineAsmRegClass::reg_xy) => "d",
+            Mos(MosInlineAsmRegClass::reg_gpr) => "R",
             Msp430(Msp430InlineAsmRegClass::reg) => "r",
             M68k(M68kInlineAsmRegClass::reg) => "r",
             M68k(M68kInlineAsmRegClass::reg_addr) => "a",
@@ -800,6 +809,7 @@ fn modifier_to_llvm(
         Avr(_) => None,
         S390x(_) => None,
         Sparc(_) => None,
+        Mos(_) => None,
         Msp430(_) => None,
         SpirV(SpirVInlineAsmRegClass::reg) => bug!("LLVM backend does not support SPIR-V"),
         M68k(_) => None,
@@ -880,6 +890,7 @@ fn dummy_output_type<'ll>(cx: &CodegenCx<'ll, '_>, reg: InlineAsmRegClass) -> &'
         }
         Sparc(SparcInlineAsmRegClass::reg) => cx.type_i32(),
         Sparc(SparcInlineAsmRegClass::yreg) => unreachable!("clobber-only"),
+        Mos(_) => cx.type_i8(),
         Msp430(Msp430InlineAsmRegClass::reg) => cx.type_i16(),
         M68k(M68kInlineAsmRegClass::reg) => cx.type_i32(),
         M68k(M68kInlineAsmRegClass::reg_addr) => cx.type_i32(),

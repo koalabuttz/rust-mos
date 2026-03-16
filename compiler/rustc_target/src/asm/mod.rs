@@ -185,6 +185,7 @@ mod hexagon;
 mod loongarch;
 mod m68k;
 mod mips;
+mod mos;
 mod msp430;
 mod nvptx;
 mod powerpc;
@@ -204,6 +205,7 @@ pub use hexagon::{HexagonInlineAsmReg, HexagonInlineAsmRegClass};
 pub use loongarch::{LoongArchInlineAsmReg, LoongArchInlineAsmRegClass};
 pub use m68k::{M68kInlineAsmReg, M68kInlineAsmRegClass};
 pub use mips::{MipsInlineAsmReg, MipsInlineAsmRegClass};
+pub use mos::{MosInlineAsmReg, MosInlineAsmRegClass};
 pub use msp430::{Msp430InlineAsmReg, Msp430InlineAsmRegClass};
 pub use nvptx::{NvptxInlineAsmReg, NvptxInlineAsmRegClass};
 pub use powerpc::{PowerPCInlineAsmReg, PowerPCInlineAsmRegClass};
@@ -239,6 +241,7 @@ pub enum InlineAsmArch {
     Wasm64,
     Bpf,
     Avr,
+    Mos,
     Msp430,
     M68k,
     CSKY,
@@ -270,10 +273,11 @@ impl InlineAsmArch {
             Arch::Wasm64 => Some(Self::Wasm64),
             Arch::Bpf => Some(Self::Bpf),
             Arch::Avr => Some(Self::Avr),
+            Arch::Mos => Some(Self::Mos),
             Arch::Msp430 => Some(Self::Msp430),
             Arch::M68k => Some(Self::M68k),
             Arch::CSky => Some(Self::CSKY),
-            Arch::AmdGpu | Arch::Mos | Arch::Xtensa | Arch::Other(_) => None,
+            Arch::AmdGpu | Arch::Xtensa | Arch::Other(_) => None,
         }
     }
 }
@@ -296,6 +300,7 @@ pub enum InlineAsmReg {
     Wasm(WasmInlineAsmReg),
     Bpf(BpfInlineAsmReg),
     Avr(AvrInlineAsmReg),
+    Mos(MosInlineAsmReg),
     Msp430(Msp430InlineAsmReg),
     M68k(M68kInlineAsmReg),
     CSKY(CSKYInlineAsmReg),
@@ -318,6 +323,7 @@ impl InlineAsmReg {
             Self::Sparc(r) => r.name(),
             Self::Bpf(r) => r.name(),
             Self::Avr(r) => r.name(),
+            Self::Mos(r) => r.name(),
             Self::Msp430(r) => r.name(),
             Self::M68k(r) => r.name(),
             Self::CSKY(r) => r.name(),
@@ -339,6 +345,7 @@ impl InlineAsmReg {
             Self::Sparc(r) => InlineAsmRegClass::Sparc(r.reg_class()),
             Self::Bpf(r) => InlineAsmRegClass::Bpf(r.reg_class()),
             Self::Avr(r) => InlineAsmRegClass::Avr(r.reg_class()),
+            Self::Mos(r) => InlineAsmRegClass::Mos(r.reg_class()),
             Self::Msp430(r) => InlineAsmRegClass::Msp430(r.reg_class()),
             Self::M68k(r) => InlineAsmRegClass::M68k(r.reg_class()),
             Self::CSKY(r) => InlineAsmRegClass::CSKY(r.reg_class()),
@@ -380,6 +387,7 @@ impl InlineAsmReg {
             }
             InlineAsmArch::Bpf => Self::Bpf(BpfInlineAsmReg::parse(name)?),
             InlineAsmArch::Avr => Self::Avr(AvrInlineAsmReg::parse(name)?),
+            InlineAsmArch::Mos => Self::Mos(MosInlineAsmReg::parse(name)?),
             InlineAsmArch::Msp430 => Self::Msp430(Msp430InlineAsmReg::parse(name)?),
             InlineAsmArch::M68k => Self::M68k(M68kInlineAsmReg::parse(name)?),
             InlineAsmArch::CSKY => Self::CSKY(CSKYInlineAsmReg::parse(name)?),
@@ -409,6 +417,7 @@ impl InlineAsmReg {
             Self::Sparc(r) => r.validate(arch, reloc_model, target_features, target, is_clobber),
             Self::Bpf(r) => r.validate(arch, reloc_model, target_features, target, is_clobber),
             Self::Avr(r) => r.validate(arch, reloc_model, target_features, target, is_clobber),
+            Self::Mos(r) => r.validate(arch, reloc_model, target_features, target, is_clobber),
             Self::Msp430(r) => r.validate(arch, reloc_model, target_features, target, is_clobber),
             Self::M68k(r) => r.validate(arch, reloc_model, target_features, target, is_clobber),
             Self::CSKY(r) => r.validate(arch, reloc_model, target_features, target, is_clobber),
@@ -437,6 +446,7 @@ impl InlineAsmReg {
             Self::Sparc(r) => r.emit(out, arch, modifier),
             Self::Bpf(r) => r.emit(out, arch, modifier),
             Self::Avr(r) => r.emit(out, arch, modifier),
+            Self::Mos(r) => r.emit(out, arch, modifier),
             Self::Msp430(r) => r.emit(out, arch, modifier),
             Self::M68k(r) => r.emit(out, arch, modifier),
             Self::CSKY(r) => r.emit(out, arch, modifier),
@@ -458,6 +468,7 @@ impl InlineAsmReg {
             Self::Sparc(_) => cb(self),
             Self::Bpf(r) => r.overlapping_regs(|r| cb(Self::Bpf(r))),
             Self::Avr(r) => r.overlapping_regs(|r| cb(Self::Avr(r))),
+            Self::Mos(_) => cb(self),
             Self::Msp430(_) => cb(self),
             Self::M68k(_) => cb(self),
             Self::CSKY(_) => cb(self),
@@ -484,6 +495,7 @@ pub enum InlineAsmRegClass {
     Wasm(WasmInlineAsmRegClass),
     Bpf(BpfInlineAsmRegClass),
     Avr(AvrInlineAsmRegClass),
+    Mos(MosInlineAsmRegClass),
     Msp430(Msp430InlineAsmRegClass),
     M68k(M68kInlineAsmRegClass),
     CSKY(CSKYInlineAsmRegClass),
@@ -509,6 +521,7 @@ impl InlineAsmRegClass {
             Self::Wasm(r) => r.name(),
             Self::Bpf(r) => r.name(),
             Self::Avr(r) => r.name(),
+            Self::Mos(r) => r.name(),
             Self::Msp430(r) => r.name(),
             Self::M68k(r) => r.name(),
             Self::CSKY(r) => r.name(),
@@ -536,6 +549,7 @@ impl InlineAsmRegClass {
             Self::Wasm(r) => r.suggest_class(arch, ty).map(InlineAsmRegClass::Wasm),
             Self::Bpf(r) => r.suggest_class(arch, ty).map(InlineAsmRegClass::Bpf),
             Self::Avr(r) => r.suggest_class(arch, ty).map(InlineAsmRegClass::Avr),
+            Self::Mos(r) => r.suggest_class(arch, ty).map(InlineAsmRegClass::Mos),
             Self::Msp430(r) => r.suggest_class(arch, ty).map(InlineAsmRegClass::Msp430),
             Self::M68k(r) => r.suggest_class(arch, ty).map(InlineAsmRegClass::M68k),
             Self::CSKY(r) => r.suggest_class(arch, ty).map(InlineAsmRegClass::CSKY),
@@ -566,6 +580,7 @@ impl InlineAsmRegClass {
             Self::Wasm(r) => r.suggest_modifier(arch, ty),
             Self::Bpf(r) => r.suggest_modifier(arch, ty),
             Self::Avr(r) => r.suggest_modifier(arch, ty),
+            Self::Mos(r) => r.suggest_modifier(arch, ty),
             Self::Msp430(r) => r.suggest_modifier(arch, ty),
             Self::M68k(r) => r.suggest_modifier(arch, ty),
             Self::CSKY(r) => r.suggest_modifier(arch, ty),
@@ -596,6 +611,7 @@ impl InlineAsmRegClass {
             Self::Wasm(r) => r.default_modifier(arch),
             Self::Bpf(r) => r.default_modifier(arch),
             Self::Avr(r) => r.default_modifier(arch),
+            Self::Mos(r) => r.default_modifier(arch),
             Self::Msp430(r) => r.default_modifier(arch),
             Self::M68k(r) => r.default_modifier(arch),
             Self::CSKY(r) => r.default_modifier(arch),
@@ -629,6 +645,7 @@ impl InlineAsmRegClass {
             Self::Wasm(r) => r.supported_types(arch),
             Self::Bpf(r) => r.supported_types(arch),
             Self::Avr(r) => r.supported_types(arch),
+            Self::Mos(r) => r.supported_types(arch),
             Self::Msp430(r) => r.supported_types(arch),
             Self::M68k(r) => r.supported_types(arch),
             Self::CSKY(r) => r.supported_types(arch),
@@ -669,6 +686,7 @@ impl InlineAsmRegClass {
             }
             InlineAsmArch::Bpf => Self::Bpf(BpfInlineAsmRegClass::parse(name)?),
             InlineAsmArch::Avr => Self::Avr(AvrInlineAsmRegClass::parse(name)?),
+            InlineAsmArch::Mos => Self::Mos(MosInlineAsmRegClass::parse(name)?),
             InlineAsmArch::Msp430 => Self::Msp430(Msp430InlineAsmRegClass::parse(name)?),
             InlineAsmArch::M68k => Self::M68k(M68kInlineAsmRegClass::parse(name)?),
             InlineAsmArch::CSKY => Self::CSKY(CSKYInlineAsmRegClass::parse(name)?),
@@ -694,6 +712,7 @@ impl InlineAsmRegClass {
             Self::Wasm(r) => r.valid_modifiers(arch),
             Self::Bpf(r) => r.valid_modifiers(arch),
             Self::Avr(r) => r.valid_modifiers(arch),
+            Self::Mos(r) => r.valid_modifiers(arch),
             Self::Msp430(r) => r.valid_modifiers(arch),
             Self::M68k(r) => r.valid_modifiers(arch),
             Self::CSKY(r) => r.valid_modifiers(arch),
@@ -903,6 +922,11 @@ pub fn allocatable_registers(
             avr::fill_reg_map(arch, reloc_model, target_features, target, &mut map);
             map
         }
+        InlineAsmArch::Mos => {
+            let mut map = mos::regclass_map();
+            mos::fill_reg_map(arch, reloc_model, target_features, target, &mut map);
+            map
+        }
         InlineAsmArch::Msp430 => {
             let mut map = msp430::regclass_map();
             msp430::fill_reg_map(arch, reloc_model, target_features, target, &mut map);
@@ -939,6 +963,7 @@ pub enum InlineAsmClobberAbi {
     PowerPCSPE,
     S390x,
     Bpf,
+    Mos,
     Msp430,
 }
 
@@ -1014,6 +1039,10 @@ impl InlineAsmClobberAbi {
             },
             InlineAsmArch::Bpf => match name {
                 "C" | "system" => Ok(InlineAsmClobberAbi::Bpf),
+                _ => Err(&["C", "system"]),
+            },
+            InlineAsmArch::Mos => match name {
+                "C" | "system" => Ok(InlineAsmClobberAbi::Mos),
                 _ => Err(&["C", "system"]),
             },
             InlineAsmArch::Msp430 => match name {
@@ -1322,6 +1351,12 @@ impl InlineAsmClobberAbi {
                     // https://www.kernel.org/doc/html/latest/bpf/standardization/abi.html#registers-and-calling-convention
 
                     r0, r1, r2, r3, r4, r5,
+                }
+            },
+            InlineAsmClobberAbi::Mos => clobbered_regs! {
+                Mos MosInlineAsmReg {
+                    // All real registers are caller-saved in the 6502 C ABI
+                    a, x, y,
                 }
             },
             InlineAsmClobberAbi::Msp430 => clobbered_regs! {
