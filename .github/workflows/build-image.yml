@@ -222,6 +222,7 @@ jobs:
           IMAGE="${REGISTRY}/${IMAGE_NAME}:${{ steps.sha.outputs.tag }}"
 
           mkdir -p /tmp/test-mos/src
+          chown -R 1000:1000 /tmp/test-mos
           cat > /tmp/test-mos/Cargo.toml << 'EOF'
           [package]
           name = "test-mos"
