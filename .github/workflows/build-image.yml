@@ -35,7 +35,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   # Default SHAs — update these when upgrading upstream dependencies
-  DEFAULT_LLVM_MOS_SHA: '54c694f07199151b3394ea2af9f4790d51166852'
+  DEFAULT_LLVM_MOS_SHA: 'ac2fb2277e69c2ac7dba6e4f69aa29bc0a2e6e5f'
   DEFAULT_LLVM_MOS_SDK_SHA: '45371581201110552a51b3b1de2aae1a0b0af89c'
 
 # Only run one build at a time per branch
@@ -221,28 +221,26 @@ jobs:
         run: |
           IMAGE="${REGISTRY}/${IMAGE_NAME}:${{ steps.sha.outputs.tag }}"
 
-          mkdir -p /tmp/test-mos/src
-          chown -R 1000:1000 /tmp/test-mos
-          cat > /tmp/test-mos/Cargo.toml << 'EOF'
+          docker run --rm "$IMAGE" bash -c '
+            mkdir -p /tmp/test-mos/src
+            cat > /tmp/test-mos/Cargo.toml << INNER
           [package]
           name = "test-mos"
           version = "0.1.0"
           edition = "2021"
-          EOF
+          INNER
 
-          cat > /tmp/test-mos/src/main.rs << 'EOF'
+            cat > /tmp/test-mos/src/main.rs << INNER
           #![no_std]
           #![no_main]
           #[panic_handler]
           fn panic(_info: &core::panic::PanicInfo) -> ! { loop {} }
           #[no_mangle]
           pub extern "C" fn main() -> i32 { 42 }
-          EOF
+          INNER
 
-          docker run --rm \
-            -v /tmp/test-mos:/work \
-            -w /work \
-            "$IMAGE" \
+            cd /tmp/test-mos
             cargo build --target mos-c64-none -Zbuild-std=core --release
+          '
 
           echo "=== MOS compilation succeeded on ${{ matrix.arch }} ==="
