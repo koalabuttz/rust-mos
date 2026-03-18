@@ -35,7 +35,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   # Default SHAs — update these when upgrading upstream dependencies
-  DEFAULT_LLVM_MOS_SHA: 'ac2fb2277e69c2ac7dba6e4f69aa29bc0a2e6e5f'
+  DEFAULT_LLVM_MOS_SHA: 'ac2fb2277e6903a1f687714f5e5047c8caeae7c6'
   DEFAULT_LLVM_MOS_SDK_SHA: '45371581201110552a51b3b1de2aae1a0b0af89c'
 
 # Only run one build at a time per branch
