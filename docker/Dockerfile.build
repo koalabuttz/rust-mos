@@ -45,7 +45,7 @@ ARG LLVM_MOS_SDK_SHA
 WORKDIR /src
 
 # Download LLVM-MOS source (tarball is much faster than git clone for a 2.6 GB repo)
-RUN curl -fsSL "https://github.com/llvm-mos/llvm-mos/archive/${LLVM_MOS_SHA}.tar.gz" | tar xz && \
+RUN curl -fsSL "https://github.com/koalabuttz/llvm-mos/archive/${LLVM_MOS_SHA}.tar.gz" | tar xz && \
     mv "llvm-mos-${LLVM_MOS_SHA}" llvm-mos
 
 # Build LLVM-MOS
