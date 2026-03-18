@@ -133,7 +133,7 @@ build-dir = "/tmp/rust-mos-build"
 docs = false
 host = ["${HOST_TRIPLE}"]
 extended = true
-tools = ["cargo", "clippy", "rustfmt"]
+tools = ["cargo"]
 
 [target.${HOST_TRIPLE}]
 llvm-config = "/usr/local/bin/llvm-config"
@@ -161,15 +161,11 @@ RUN set -eux && \
     cp -a "${STAGE1}/lib/"* /rust-mos-install/lib/ && \
     # cargo (built separately as a stage1 tool)
     cp "${TOOLS}/cargo" /rust-mos-install/bin/cargo && \
-    # clippy
-    cp "${TOOLS}/clippy-driver" /rust-mos-install/bin/clippy-driver && \
-    # rustfmt
-    cp "${TOOLS}/rustfmt" /rust-mos-install/bin/rustfmt && \
     # rust-src: needed for -Zbuild-std cross-compilation to MOS targets
-    # stage1/lib/rustlib/src/rust/library may be a symlink back to the source tree;
-    # remove it and copy the real directory so it works in the final image
+    # stage1/lib/rustlib/src/rust is a symlink back to /src/rust-mos (the build tree);
+    # replace it with a real directory containing library/ and Cargo.lock
     RUST_SRC_DEST="/rust-mos-install/lib/rustlib/src/rust" && \
-    rm -rf "${RUST_SRC_DEST}/library" 2>/dev/null && \
+    rm -rf "${RUST_SRC_DEST}" && \
     mkdir -p "${RUST_SRC_DEST}" && \
     cp -a /src/rust-mos/library "${RUST_SRC_DEST}/" && \
     cp /src/rust-mos/Cargo.lock "${RUST_SRC_DEST}/" && \
